@@ -1,0 +1,613 @@
+Main.py
+
+from flask import Flask, render_template, Response, redirect, request,
+session, abort, url_for
+from camera import VideoCamera
+import cv2
+import shutil
+import PIL.Image
+from PIL import Image
+import imagehash
+import mysql.connector
+import urllib.request
+import urllib.parse
+mydb = mysql.connector.connect(host="localhost",
+user="root",password="",charset="utf8",database="eye_monitor")
+app = Flask( name )
+@app.route('/')
+def index():
+return render_template('index.html')
+@app.route('/login', methods=['GET',
+'POST']) def login():
+msg=""
+if request.method=='POST':
+uname=request.form['uname']
+pwd=request.form['pass']
+cursor = mydb.cursor()
+#print('SELECT * FROM admin WHERE username = %s AND password
+= %s', (uname, pwd))
+cursor.execute('SELECT * FROM admin WHERE username = %s
+AND password = %s', (uname, pwd))
+account = cursor.fetchone()
+if account:
+#session['loggedin'] = True
+#session['username'] = account['username']
+# Redirect to home page
+return redirect(url_for('admin'))
+else:
+# Account doesnt exist or username/password
+incorrect msg = 'Incorrect username/password!'
+return render_template('login.html',msg=msg)
+@app.route('/driver', methods=['GET', 'POST'])
+def driver():
+msg=""
+carno=""
+lat=""
+lon=""
+if request.method=='POST':
+carno=request.form['carno']
+pass1=request.form['pass']
+lat=request.form['lat']
+lon=request.form['lon']
+print(carno)
+cursor1 = mydb.cursor()
+cursor1.execute('SELECT * FROM register WHERE carno = %s
+and mobile = %s', (carno, pass1))
+account = cursor1.fetchone()
+if account:
+#session['loggedin'] = True
+#session['username'] = account['username']
+# Redirect to home page
+return redirect(url_for('monitor', carno=carno, lat=lat, lon=lon))
+else:
+# Account doesnt exist or username/password
+incorrect msg = 'Incorrect Car No. or Password!'
+return render_template('driver.html',msg=msg, carno=carno, lat=lat, lon=lon)
+@app.route('/home', methods=['GET', 'POST'])
+def home():
+cursor = mydb.cursor()
+cursor.execute('SELECT * FROM register')
+data = cursor.fetchall()
+if request.method=='GET':
+carno = request.args.get('carno')
+cursor1 = mydb.cursor()
+cursor1.execute("delete from register where carno=%s", (carno, ))
+mydb.commit()
+if cursor1.rowcount==1:
+return redirect(url_for('home'))
+return render_template('home.html',data=data)
+@app.route('/admin', methods=['GET', 'POST'])
+def admin()
+cursor = mydb.cursor()
+cursor.execute('SELECT * FROM admin')
+data = cursor.fetchone()
+if request.method=='POST':
+mobile=request.form['mobile']
+cursor1 = mydb.cursor()
+sql = "update admin set mobile=%s"
+val = (mobile, )
+cursor1.execute(sql, val)
+mydb.commit()
+return render_template('admin.html',data=data)
+@app.route('/add_new', methods=['GET',
+'POST']) def add_new():
+
+#import student
+msg=""
+if request.method=='POST':
+carno=request.form['carno']
+name=request.form['name']
+mobile=request.form['mobile']
+mobile2=request.form['mobile2']
+email=request.form['email']
+address=request.form['address']
+cursor = mydb.cursor()
+sql = "INSERT INTO register(carno,name,mobile,mobile2,email,address)
+VALUES (%s, %s, %s, %s, %s, %s)"
+val = (carno,name,mobile,mobile2,email,address)
+cursor.execute(sql, val)
+mydb.commit()
+print(cursor.rowcount, "Registered Success")
+result="sucess"
+if cursor.rowcount==1:
+return redirect(url_for('home'))
+else:
+msg='Already Exist'
+return render_template('add_new.html',msg=msg)
+@app.route('/capture', methods=['GET', 'POST']) def
+capture():
+if request.method=='GET':
+carno = request.args.get('carno')
+mobile=""
+mobile2=""
+mobile3=""
+name=""
+lat=""
+lon=""
+loc=""
+vv=0
+st="no"
+n=0
+f2=open("log.txt","r")
+vv=f2.read()
+f2.close()
+if vv==None:
+vv=0
+n=int(vv)
+if request.method=='POST':
+#carno = request.args.get('carno')
+#lat= request.args.get('lat')
+#lon= request.args.get('lon')
+carno=request.form['carno']
+lat=request.form['lat']
+lon=request.form['lon']
+cursor1 = mydb.cursor()
+cursor1.execute('SELECT * FROM register WHERE carno = %s', (carno,
+))
+account = cursor1.fetchone()
+mobile=account[2]
+mobile2=account[3]
+name=account[1]
+cursor2 = mydb.cursor()
+cursor2.execute('SELECT * FROM admin')
+account2 = cursor2.fetchone()
+mobile3=account2[2]
+if n>=10:
+st="yes"
+mob=str(mobile)+","+str(mobile2)+","+str(mobile3)
+loc=lat+", "+lon
+message="Driver has sleeping now, Carno:"+carno+",
+Driver:"+name+", Location:"+loc
+'''params = urllib.parse.urlencode({'token':
+'b81edee36bcef4ddbaa6ef535f8db03e', 'credit': 2, 'sender':
+'RandDC', 'message':message, 'number':mob})
+url = "http://pay4sms.in/sendsms/?%s" %
+params with urllib.request.urlopen(url) as f:
+print(f.read().decode('utf-8'))
+print("sent"+mob)'''
+#url5="http://projectone.in/iot_eyeblink/store.php?status=yes"
+#ur = urlopen(url5)#open url
+#data1 = ur.read().decode('utf-8')
+mycursor = mydb.cursor()
+mycursor.execute("SELECT max(id)+1 FROM details")
+maxid = mycursor.fetchone()[0]
+print(maxid)
+cursor = mydb.cursor()
+sql = "INSERT INTO details(id,carno,name,location) VALUES (%s,
+%s, %s, %s)"
+print(sql)
+val = (maxid,carno,name,loc)
+cursor.execute(sql, val)
+mydb.commit()
+return render_template('capture.html',value=vv, st=st, carno=carno,
+lat=lat, lon=lon)
+@app.route('/logout', methods=['GET', 'POST'])
+def logout():
+return render_template('login.html')
+@app.route('/monitor', methods=['GET',
+'POST']) def monitor():
+carno = request.args.get('carno')
+#lat = request.args.get('lat')
+#lon = request.args.get('lon')
+return render_template('monitor.html',carno=carno)
+@app.route('/view', methods=['GET', 'POST'])
+def view():
+carno = request.args.get('carno')
+cursor = mydb.cursor()
+cursor.execute('SELECT * FROM details where id>1 && carno=%s order
+by id desc', (carno, ))
+data = cursor.fetchall()
+if request.method=='POST':
+carno=request.form['carno']
+cursor1 = mydb.cursor()
+cursor1.execute("delete from details where id>1 && carno=%s", (carno, ))
+mydb.commit()
+if cursor1.rowcount==1:
+return redirect(url_for('home'))
+return render_template('view.html',data=data, carno=carno)
+def gen(camera)
+while True:
+frame = camera.get_frame()
+yield (b'--frame\r\n'
+b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+
+return Response(gen(VideoCamera()), mimetype='multipart/x-
+mixed-replace; boundary=frame')
+
+if __name == ' main ':
+app.run(host='0.0.0.0', debug=True)
+
+Camera.py
+
+import cv2
+import PIL.Image
+from PIL import Image
+class VideoCamera(object):
+def init (self):
+self.video = cv2.VideoCapture(0)
+self.g=0
+self.e2=""
+def del (self):
+self.video.release()
+def get_frame(self):
+success, image = self.video.read()
+face_cascade =
+cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+eyes_cascade = cv2.CascadeClassifier('haarcascade_eye.xml')
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+j = 1
+v="0"
+e1=0
+for (x,y,w,h) in faces:
+cv2.rectangle(image, (x,y), (x+w, y+h), (255,0,0), 2)
+roi_gray = gray[y:y+h, x:x+w]
+roi_color = image[y:y+h, x:x+w]
+eyes = eyes_cascade.detectMultiScale(roi_gray, 1.1, 3)
+for (ex, ey, ew, eh) in eyes:
+v=eyes[0][0]
+e1+=1
+cv2.rectangle(roi_color, (ex,ey), (ex+ew, ey+eh), (0, 255, 0), 2)
+if e1>0:
+self.e2="a"
+if v=="0":
+if self.e2=="a":
+self.g += 1
+else:
+self.g = 0
+ff=open("log.txt","w")
+ff.write(str(self.g))
+ff.close()
+if self.g>=10:
+print("Sleep")
+self.g=0
+print(str(e1)+"--"+str(v)+"--"+str(self.g))
+ret, jpeg = cv2.imencode('.jpg', image)
+return jpeg.tobytes()
+
+Camera.py
+
+import cv2
+import PIL.Image
+from PIL import Image
+class VideoCamera(object):
+def init (self):
+self.video = cv2.VideoCapture(0)
+def del (self):
+self.video.release()
+def get_frame(self):
+success, image = self.video.read()
+face_cascade =
+cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+j = 1
+for (x, y, w, h) in faces:
+mm=cv2.rectangle(image, (x, y), (x+w, y+h), (255, 0, 0), 2)
+cv2.imwrite("myface.jpg", mm)
+image = cv2.imread("myface.jpg")
+cropped = image[y:y+h, x:x+w]
+gg="f"+str(j)+".jpg"
+cv2.imwrite("faces/"+gg, cropped)
+mm2 = PIL.Image.open('faces/'+gg)
+rz = mm2.resize((300,300), PIL.Image.ANTIALIAS)
+rz.save('faces/'+gg)
+j += 1
+ret, jpeg = cv2.imencode('.jpg', image)
+return jpeg.tobytes()
+
+Update driver details.html
+<html>
+<head>
+<title>Eye Blink Monitoring</title>
+<link href="../static/style.css" rel="stylesheet"
+type="text/css"> </head>
+<body>
+<div align="center" class="hd">Eye Blinking - Monitoring
+System</div> <div align="center" class="sd">
+<a href="/admin">Home</a> |
+<a href="/add_new">New Driver</a> |
+<a href="/home">View Driver</a> |
+<a href="/logout">Logout</a>
+</div>
+<h2 align="center">Driver Information </h2>
+<div class="register">
+<h1>Register</h1>
+<form action="{{ url_for('add_new') }}" method="post">
+<input type="text" name="name"
+
+placeholder="Name" required>
+
+<input type="text" name="carno" placeholder="Car
+
+No." required>
+
+<input name="mobile" type="text"
+maxlength="10" placeholder="Mobile No." required>
+<input name="mobile2" type="text"
+maxlength="10" placeholder="Family Mobile No." required>
+
+<input type="email" name="email" placeholder="E-
+mail" required>
+
+<input type="text" name="address"
+
+placeholder="Address" required>
+
+<div class="msg">{{ msg }}</div>
+<input type="submit" value="Register">
+</form>
+</div>
+</body>
+</html>
+Admin.html
+<html>
+<head>
+<title>Eye Blink Monitoring</title>
+<link href="../static/style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<div align="center" class="hd">Eye Blinking - Monitoring
+System</div> <div align="center" class="sd">
+<a href="/admin">Home</a> |
+<a href="/add_new">New Driver</a> |
+<a href="/home">View Driver</a> |
+<a href="/logout">Logout</a>
+</div>
+<p>&nbsp;</p>
+<h1 align="center">Welcome to Administrator </h1>
+<form name="form1" method="post" action="/admin">
+<table width="258" height="89" border="0" align="center">
+<tr>
+<td align="left">Mobile No. </td>
+<td align="left"><input type="text" name="mobile" value="{{
+data[2] }}"></td>
+</tr>
+<tr>
+<td align="left">&nbsp;</td>
+<td align="left"><input type="submit" name="Submit"
+value="Update"></td>
+</tr>
+</table>
+</form>
+<h3 align="center">&nbsp;</h3>
+<p align="center">&nbsp;</p>
+</body>
+</html>
+Capture.html
+<html>
+<script>
+var x = document.getElementById("demo");
+function getLocation() {
+if (navigator.geolocation) {
+navigator.geolocation.getCurrentPosition(showPosition);
+} else {
+x.innerHTML = "Geolocation is not supported by this browser.";
+}
+}
+function showPosition(position) {
+//x.innerHTML = "Latitude: " + position.coords.latitude +
+//"<br>Longitude: " + position.coords.longitude;
+document.form1.lat.value=position.coords.latitude;
+document.form1.lon.value=position.coords.longitude;
+}
+</script>
+<body onLoad="getLocation()">
+<form name="form1" method="post" action="/capture">
+<input type="hidden" name="carno" value="{{ carno
+}}"> <input type="hidden" name="lat" value="{{ lat }}">
+<input type="hidden" name="lon" value="{{ lon }}">
+</form>
+{% if st=="yes" %}
+<h2 align="center" style="color:#FF0000">Sleep Detected</h2>
+<iframe src="http://projectone.in/iot_eyeblink/store.php?status=yes"
+width="100" height="100" style="display:block"></iframe>
+<p align="center">
+<embed src="../static/audio2.mp3" autostart="true"></embed>
+<script>
+setTimeout(function () {
+document.form1.submit();
+}, 15000);
+</script>
+</p>
+{% else %}
+<h2 align="center" style="color:#0000FF">Driving...</h2>
+<iframe src="http://projectone.in/iot_eyeblink/store.php?status=no"
+width="100" height="100" style="display:block"></iframe>
+<script>
+setTimeout(function () {
+document.form1.submit();
+}, 5000);
+</script>
+{% endif %}
+<iframe src="http://projectone.in/iot_eyeblink/test.php" width="100"
+height="100" style="display:none"></iframe>
+</body>
+</html>
+
+
+Driver login.html
+
+<html>
+<head>
+<title>Eye Blink Monitoring</title>
+<link href="../static/style.css" rel="stylesheet"
+type="text/css"> <script>
+<html>
+<script>
+var x = document.getElementById("demo");
+
+function getLocation() {
+if (navigator.geolocation) {
+navigator.geolocation.getCurrentPosition(showPosition);
+} else {
+x.innerHTML = "Geolocation is not supported by this browser.";
+}
+}
+function showPosition(position) {
+document.form1.lat.value=position.coords.latitude;
+document.form1.lon.value=position.coords.longitude;
+}
+</script>
+<body onLoad="getLocation()">
+<form name="form1" method="post" action="/capture">
+<input type="hidden" name="carno" value="{{ carno }}">
+<input type="hidden" name="lat" value="{{ lat }}">
+<input type="hidden" name="lon" value="{{ lon }}">
+</form>
+{% if st=="yes" %}
+<h2 align="center" style="color:#FF0000">Sleep Detected</h2>
+<iframe src="http://projectone.in/iot_eyeblink/store.php?status=yes"
+width="100" height="100" style="display:block"></iframe>
+<p align="center">
+<embed src="../static/audio2.mp3" autostart="true"></embed>
+<script>
+setTimeout(function () {
+document.form1.submit();
+}, 15000);
+</script>
+</p>
+{% else %}
+<h2 align="center" style="color:#0000FF">Driving...</h2>
+<iframe src="http://projectone.in/iot_eyeblink/store.php?status=no"
+width="100" height="100" style="display:block"></iframe>
+<script>
+setTimeout(function () {
+document.form1.submit();
+}, 5000);
+</script>
+{% endif %}
+<iframe src="http://projectone.in/iot_eyeblink/test.php" width="100"
+height="100" style="display:none"></iframe>
+</body>
+</html>
+</script>
+<style type="text/css">
+<!--
+.style1 {color: #FF0000}
+-->
+</style>
+</head>
+<body onLoad="getLocation()">
+<div align="center" class="hd">Eye Blinking - Monitoring
+System</div> <div align="center" class="sd">
+<a href="/">Home</a> |
+<a href="/driver">Driver</a> |
+<a href="/login">Admin</a>
+</div>
+<iframe src="http://projectone.in/iot_eyeblink/store.php?status=no"
+width="100" height="100" style="display:none"></iframe>
+<form name="form1" method="post"
+action="/driver"> <h3 align="center">&nbsp;</h3>
+<h3 align="center">Driver Access </h3>
+<table width="316" height="106" border="0"
+align="center" cellpadding="5" cellspacing="0" class="bg1">
+<tr>
+<td>Car No. </td>
+<td><input type="text" name="carno">
+<input type="hidden" name="lat" />
+<input type="hidden" name="lon" /></td>
+</tr>
+<tr>
+<td>Password</td>
+<td><input type="password" name="pass"></td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><input type="submit" name="Submit"
+value="Submit"></td> </tr>
+</table>
+<p align="center" class="style1">{{ msg
+}}</p> </form>
+<!--<form name="form1" method="post"
+action=""> <p>&nbsp;</p>
+<table width="275" height="183" border="0"
+align="center" cellpadding="5" cellspacing="0" class="bg1">
+<tr>
+<td colspan="2" align="center" class="bg2">Admin Login </td>
+</tr>
+<tr>
+<td>Username</td>
+<td><input type="text" name="uname"></td>
+</tr>
+<tr>
+<td>Password</td>
+<td><input type="text" name="pass"></td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><input name="btn" type="submit" value="Login"></td>
+</tr>
+</table>
+</form>-->
+</body>
+</html>
+Login.html
+<html>
+<head>
+<title>Eye Blink Monitoring</title>
+<link href="../static/style.css" rel="stylesheet"
+type="text/css"> </head>
+<body>
+<div align="center" class="hd">Eye Blinking - Monitoring
+System</div> <div align="center" class="sd">
+<a href="/">Home</a> |
+<a href="/driver">Driver</a> |
+<a href="/login">Admin</a>
+</div>
+<!--<form name="form1" method="post"
+action=""> <p>&nbsp;</p>
+<table width="275" height="183" border="0"
+align="center" cellpadding="5" cellspacing="0" class="bg1">
+<tr>
+<td colspan="2" align="center" class="bg2">Admin Login </td>
+</tr>
+<tr>
+<td>Username</td>
+<td><input type="text" name="uname"></td>
+</tr>
+<tr>
+<td>Password</td>
+<td><input type="text" name="pass"></td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><input name="btn" type="submit"
+value="Login"></td> </tr>
+</table>
+</form>-->
+<div class="login">
+
+<h1>Login</h1>
+<!--<div class="links">
+<a href="{{ url_for('login') }}"
+
+class="active">Login</a>
+
+<a href="#">Register</a>
+</div>-->
+<form action="{{ url_for('login') }}"
+method="post"> <label for="username">
+<i class="fas fa-user">U</i>
+</label>
+<input type="text" name="uname"
+
+placeholder="Username" required>
+
+<label for="password">
+<i class="fas fa-lock">P</i>
+</label>
+<input type="password" name="pass"
+
+placeholder="Password" required>
+
+<div class="msg">{{ msg }}</div>
+<input type="submit" value="Login">
+</form>
+
+</div>
+</body>
+</html>
